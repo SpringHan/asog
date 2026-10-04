@@ -1,0 +1,20 @@
+[package]
+name = "asog"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "把 Markdown 文件夹编译为完整静态博客站点的命令行程序"
+license = "MIT"
+readme = "README.md"
+keywords = ["static-site-generator", "markdown", "blog"]
+categories = ["command-line-utilities"]
+
+[dependencies]
+anyhow = "1.0.104"
+clap = { version = "4.6.7", features = ["derive"] }
+markdown = "1.0.0"
+walkdir = "2.5.0"
+
+[profile.release]
+lto = "thin"
+strip = true

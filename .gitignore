@@ -1,0 +1,8 @@
+/target
+
+# Cargo 的本地索引与缓存（保留 config.toml，见 README 中的说明）
+/.cargo/*
+!/.cargo/config.toml
+
+# 示例站点的构建产物
+/example/public

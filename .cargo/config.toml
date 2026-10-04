@@ -1,0 +1,15 @@
+# 工作区局部 Cargo 配置。
+#
+# 该文件让本项目的依赖下载/索引缓存落在仓库内的 `.cargo/` 目录中
+# （`.cargo/registry/` 已在 .gitignore 中忽略），从而不依赖、也不污染
+# 用户级 `~/.cargo`。若你的环境可以直接使用 `~/.cargo`，可自行调整
+# `CARGO_HOME` 或删除本目录；`cargo` 会优先使用离当前目录最近的配置。
+
+[source.crates-io]
+replace-with = "mirror"
+
+[source.mirror]
+registry = "sparse+https://mirrors.ustc.edu.cn/crates.io-index/"
+
+[net]
+retry = 3
