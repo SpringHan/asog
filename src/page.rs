@@ -118,7 +118,7 @@ fn shell(
 {main}    </main>
     <footer class="site-footer">
         <div class="wrap footer-inner">
-            {footer_author}<span>使用 <strong>asog</strong> 生成</span>
+            {footer_author}
         </div>
     </footer>
 </body>
