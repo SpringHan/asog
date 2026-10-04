@@ -139,7 +139,15 @@ pub fn build(config: &Config) -> Result<Report> {
     }
     pages.sort_by(|a, b| b.date.cmp(&a.date).then_with(|| a.title.cmp(&b.title)));
 
-    // 2. 汇总标签与页眉导航（导航按源文件路径排序，便于用文件名控制顺序）。
+    // 2. 汇总标签、站点图标与页眉导航（导航按源文件路径排序，便于用文件名控制顺序）。
+    let icon = detect_icon(&assets);
+    if let Some(icon) = &icon {
+        report.actions.push(format!("使用 {icon} 作为站点图标"));
+    } else {
+        report
+            .actions
+            .push("未找到 assets/logo.*，站点不设置图标".to_string());
+    }
     let tags = collect_tags(&pages);
     let mut title_bar_pages: Vec<&Page> = pages.iter().filter(|page| page.title_bar).collect();
     title_bar_pages.sort_by(|a, b| a.source.cmp(&b.source));
@@ -157,6 +165,7 @@ pub fn build(config: &Config) -> Result<Report> {
         lang: &config.lang,
         has_tags: !tags.is_empty(),
         nav: &nav,
+        icon: icon.as_deref(),
     };
 
     // 3. 渲染文章页。
@@ -357,6 +366,38 @@ fn collect(from: &Path) -> Result<Collected> {
     }
 
     Ok((sources, assets))
+}
+
+/// 站点图标的候选文件名，按优先级排列。
+///
+/// 同时存在多个时优先使用矢量图，其次才是位图。
+const ICON_CANDIDATES: [&str; 8] = [
+    "assets/logo.svg",
+    "assets/logo.png",
+    "assets/logo.ico",
+    "assets/logo.webp",
+    "assets/logo.avif",
+    "assets/logo.jpg",
+    "assets/logo.jpeg",
+    "assets/logo.gif",
+];
+
+/// 在已收集的静态资源中查找 `assets/logo.*` 作为站点图标。
+///
+/// 名称匹配不区分大小写，返回值保留源目录中的真实大小写；
+/// 找不到时返回 `None`，此时生成的页面不含任何 icon 声明。
+fn detect_icon(assets: &[FileEntry]) -> Option<String> {
+    for candidate in ICON_CANDIDATES {
+        let found = assets.iter().find(|(rel, _)| {
+            rel.to_string_lossy()
+                .replace('\\', "/")
+                .eq_ignore_ascii_case(candidate)
+        });
+        if let Some((rel, _)) = found {
+            return Some(util::rel_url(rel));
+        }
+    }
+    None
 }
 
 /// 编译单个 Markdown 文件；草稿返回 `None`。
@@ -563,6 +604,40 @@ mod tests {
 
     fn page(rel_out: &str, slug: Option<&str>) -> PathBuf {
         output_path(Path::new(rel_out), slug)
+    }
+
+    fn asset(path: &str) -> FileEntry {
+        (PathBuf::from(path), PathBuf::from("/source").join(path))
+    }
+
+    #[test]
+    fn detects_site_icon_by_priority_and_case() {
+        // 同时存在时优先矢量图。
+        let both = vec![asset("assets/logo.png"), asset("assets/logo.svg")];
+        assert_eq!(detect_icon(&both).as_deref(), Some("assets/logo.svg"));
+
+        let only_png = vec![asset("posts/a.md"), asset("assets/logo.png")];
+        assert_eq!(detect_icon(&only_png).as_deref(), Some("assets/logo.png"));
+
+        let ico = vec![asset("assets/logo.ico")];
+        assert_eq!(detect_icon(&ico).as_deref(), Some("assets/logo.ico"));
+
+        // 大小写不敏感，但保留源目录中的真实文件名。
+        let upper = vec![asset("assets/Logo.PNG")];
+        assert_eq!(detect_icon(&upper).as_deref(), Some("assets/Logo.PNG"));
+    }
+
+    #[test]
+    fn skips_files_that_are_not_site_icons() {
+        for assets in [
+            vec![asset("assets/cover.png")],
+            vec![asset("logo.svg")],
+            vec![asset("assets/logo.txt")],
+            vec![asset("other/assets/logo.svg")],
+            Vec::new(),
+        ] {
+            assert_eq!(detect_icon(&assets), None, "不应匹配：{assets:?}");
+        }
     }
 
     #[test]

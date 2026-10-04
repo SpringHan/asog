@@ -16,6 +16,8 @@ pub struct Site<'a> {
     pub has_tags: bool,
     /// 由 `title_bar: true` 的页面汇总而成的页眉导航项（按源文件路径排序）。
     pub nav: &'a [NavItem],
+    /// 站点图标（源目录 `assets/logo.*`）的站点根相对路径；不存在时为 `None`。
+    pub icon: Option<&'a str>,
 }
 
 /// 一个页眉导航项；`url` 为站点根相对路径（已做 URL 编码）。
@@ -53,9 +55,6 @@ pub struct PostView<'a> {
     pub toc: &'a [TocEntry],
 }
 
-/// 内联 SVG favicon，避免额外的 404 请求。
-const FAVICON: &str = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230f172a'/%3E%3Cpath d='M28 74 50 26l22 48h-9l-5-11H42l-5 11z' fill='%2338bdf8'/%3E%3C/svg%3E";
-
 /// 站点外壳：`<head>` + 页眉 + 主体 + 页脚。
 ///
 /// `current` 是当前页面的站点根相对路径，用于在导航中标记 `aria-current="page"`。
@@ -86,6 +85,17 @@ fn shell(
         )
     };
     let nav = nav_links(site, base, current);
+    let icon_link = match site.icon {
+        Some(icon) => {
+            let href = esc(&format!("{base}{icon}"));
+            match icon_mime(icon) {
+                Some(mime) => format!("    <link rel=\"icon\" type=\"{mime}\" href=\"{href}\">\n"),
+                None => format!("    <link rel=\"icon\" href=\"{href}\">\n"),
+            }
+        }
+        // 源目录没有 `assets/logo.*` 时不输出任何 icon 声明。
+        None => String::new(),
+    };
     let footer_author = if site.author.is_empty() {
         String::new()
     } else {
@@ -103,8 +113,7 @@ fn shell(
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{full_title}</title>
 {meta_description}    <link rel="stylesheet" href="{base}style.css">
-    <link rel="icon" href="{FAVICON}">
-</head>
+{icon_link}</head>
 <body>
     <a class="skip-link" href="#main">跳到主内容</a>
     <header class="site-header">
@@ -152,6 +161,21 @@ fn nav_links(site: &Site<'_>, base: &str, current: Option<&str>) -> String {
         out.push_str(&nav_link(&format!("{base}tags/index.html"), "标签", active));
     }
     out
+}
+
+/// 由图标文件扩展名推断 MIME 类型；未知扩展名返回 `None`（只输出 `href`）。
+fn icon_mime(path: &str) -> Option<&'static str> {
+    let extension = path.rsplit_once('.')?.1.to_ascii_lowercase();
+    match extension.as_str() {
+        "svg" => Some("image/svg+xml"),
+        "png" => Some("image/png"),
+        "ico" => Some("image/x-icon"),
+        "webp" => Some("image/webp"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "gif" => Some("image/gif"),
+        "avif" => Some("image/avif"),
+        _ => None,
+    }
 }
 
 /// 生成单个导航链接；`url` 与 `label` 都会被转义。
@@ -487,6 +511,7 @@ mod tests {
             lang: "zh-CN",
             has_tags: true,
             nav: &[],
+            icon: None,
         }
     }
 
@@ -495,6 +520,18 @@ mod tests {
             name: name.to_string(),
             url: format!("tags/{name}.html"),
             count: 1,
+        }
+    }
+
+    /// 一个最小的文章视图，供外壳相关断言复用。
+    fn view_fixture() -> PostView<'static> {
+        PostView {
+            title: "标题",
+            date: None,
+            updated: None,
+            tags: Vec::new(),
+            content: "<p>正文</p>",
+            toc: &[],
         }
     }
 
@@ -606,6 +643,64 @@ mod tests {
         assert!(
             !tag.contains("关于本站</a>") || !tag.contains("is-active\" href=\"../about.html\"")
         );
+    }
+
+    /// 站点外壳的固定组成部分，避免模板改动时静默丢失。
+    #[test]
+    fn shell_contains_landmarks() {
+        let html = post(&site(), "", "hello.html", &view_fixture());
+        for landmark in [
+            "<meta charset=\"utf-8\">",
+            "class=\"skip-link\" href=\"#main\"",
+            "id=\"main\"",
+            "class=\"site-footer\"",
+            "<span>使用 <strong>asog</strong> 生成</span>",
+            "<span>作者</span>",
+        ] {
+            assert!(html.contains(landmark), "缺少 {landmark}：{html}");
+        }
+        // 没有配置图标时不输出任何 icon 声明。
+        assert!(!html.contains("rel=\"icon\""));
+    }
+
+    #[test]
+    fn icon_is_rendered_with_type_and_prefix_when_present() {
+        let svg = Site {
+            icon: Some("assets/logo.svg"),
+            ..site()
+        };
+        let html = post(&svg, "../", "about.html", &view_fixture());
+        assert!(
+            html.contains("<link rel=\"icon\" type=\"image/svg+xml\" href=\"../assets/logo.svg\">")
+        );
+
+        let png = Site {
+            icon: Some("assets/logo.png"),
+            ..site()
+        };
+        let html = post(&png, "", "about.html", &view_fixture());
+        assert!(html.contains("<link rel=\"icon\" type=\"image/png\" href=\"assets/logo.png\">"));
+    }
+
+    #[test]
+    fn icon_skips_unknown_extensions_without_type() {
+        let bmp = Site {
+            icon: Some("assets/logo.bmp"),
+            ..site()
+        };
+        let html = post(&bmp, "", "about.html", &view_fixture());
+        assert!(html.contains("<link rel=\"icon\" href=\"assets/logo.bmp\">"));
+        assert!(!html.contains("type=\""));
+    }
+
+    #[test]
+    fn icon_mime_mapping() {
+        assert_eq!(icon_mime("assets/logo.svg"), Some("image/svg+xml"));
+        assert_eq!(icon_mime("a/b/LOGO.PNG"), Some("image/png"));
+        assert_eq!(icon_mime("logo.ico"), Some("image/x-icon"));
+        assert_eq!(icon_mime("logo.jpeg"), Some("image/jpeg"));
+        assert_eq!(icon_mime("logo"), None);
+        assert_eq!(icon_mime("logo.bmp"), None);
     }
 
     #[test]

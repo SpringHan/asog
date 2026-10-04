@@ -14,6 +14,8 @@ Markdown 文件，把它们编译为完整的静态博客站点并输出到指�
 - **前置元数据**：支持标题、日期、标签、摘要、草稿、是否列出、目录开关等字段。
 - **页眉导航**：`title_bar: true` 的页面会自动出现在页眉导航中，
   用它的标题作为链接文字，无需在正文里手写链接即可访问。
+- **站点图标**：源目录中的 `assets/logo.svg` / `assets/logo.png` 等会自动作为网页
+  icon（`<link rel="icon">`）；没有该文件时不输出任何 icon 声明。
 - **样式表**：内置一份零依赖的现代 CSS（响应式、自动适配深浅色、打印样式），
   源目录中自带 `style.css` 时以其为准。
 - **稳健性**：非 UTF-8 文件、坏元数据、危险输出路径等都有明确报错或警告，
@@ -73,7 +75,7 @@ content/                     # 源目录（-f）
 ├── rust/
 │   └── ownership.md         # 嵌套目录 → rust/ownership.html
 └── assets/
-    └── logo.svg             # 静态资源原样复制到输出目录
+    └── logo.svg             # 静态资源原样复制，并自动作为站点图标
 ```
 
 约定如下：
@@ -93,6 +95,7 @@ content/                     # 源目录（-f）
    其中自定义页面按**源文件路径**排序，因此可以用 `01-about.md` 这类文件名控制先后。
    `title_bar` 与 `listed` 相互独立：常见的组合是
    `listed: false` + `title_bar: true`（只通过页眉访问的固定页面）。
+10. 站点图标取源目录中的 `assets/logo.*`（见下节），找不到时页面不输出任何 icon 声明。
 
 ## 前置元数据（front matter）
 
@@ -129,6 +132,23 @@ title_bar: false
 
 解析器只实现博客场景够用的子集：无法解析的行、未知字段都会记录为警告
 （用 `--verbose` 或默认输出可以看到），不会导致构建失败。
+
+## 站点图标
+
+在源目录的 `assets/` 下放置 `logo.svg` 或 `logo.png`，asog 会自动把它作为网页 icon：
+
+```html
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+```
+
+- **识别顺序**（同时存在多个时取优先级最高的一个）：
+  `logo.svg` → `logo.png` → `logo.ico` → `logo.webp` → `logo.avif` → `logo.jpg` → `logo.jpeg` → `logo.gif`。
+- **匹配规则**：仅匹配源目录根部 `assets/` 中的 `logo.*`，大小写不敏感
+  （`assets/Logo.PNG` 同样有效，输出保留原文件名）；子目录里的同名文件不算。
+- **没有该文件时**：不输出任何 `<link rel="icon">`，也不会使用任何内置图标。
+- **相对路径**：嵌套目录中的页面会自动写成 `../assets/logo.svg`。
+- 图标本身仍作为普通静态资源复制到输出目录，因此链接始终有效。
+- `type` 属性根据扩展名生成；未知扩展名时只输出 `href`。
 
 ## 输出结构
 

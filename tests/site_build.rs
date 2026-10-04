@@ -125,6 +125,15 @@ fn builds_complete_example_site() {
     assert!(nested.contains("href=\"../about.html\""));
     assert!(nested.contains("<h1 class=\"post-title\">所有权</h1>"));
     assert!(nested.contains("src=\"../assets/logo.svg\""));
+    // 站点图标来自 assets/logo.svg，嵌套页同样带相对前缀。
+    assert!(index.contains("<link rel=\"icon\" type=\"image/svg+xml\" href=\"assets/logo.svg\">"));
+    assert!(
+        nested.contains("<link rel=\"icon\" type=\"image/svg+xml\" href=\"../assets/logo.svg\">")
+    );
+
+    // 页脚固定文案（模板改动时容易静默丢失）。
+    assert!(index.contains("<span>使用 <strong>asog</strong> 生成</span>"));
+    assert!(index.contains("<span>示例作者</span>"));
 
     // 标签总览页与内置样式表。
     let tags = read(&temp.path().join("tags/index.html"));
@@ -136,6 +145,47 @@ fn builds_complete_example_site() {
     ));
     let style = read(&temp.path().join("style.css"));
     assert!(style.contains("--accent"));
+}
+
+#[test]
+fn site_icon_follows_assets_logo() {
+    let temp = TempDir::new("icon");
+    let source = temp.path().join("content");
+    fs::create_dir_all(source.join("assets")).expect("创建源目录");
+    fs::write(source.join("index.md"), "---\ntitle: 首页\n---\n\n正文\n").expect("写入首页");
+
+    let build = |output: &Path| {
+        let mut config = example_config(output);
+        config.from = source.clone();
+        asog::build(&config).expect("构建站点")
+    };
+
+    // 1) 只有 logo.png：使用 PNG 并写入 MIME。
+    fs::write(source.join("assets/logo.png"), b"\x89PNG\r\n\x1a\n").expect("写入 png");
+    build(&temp.path().join("out-png"));
+    let html = read(&temp.path().join("out-png/index.html"));
+    assert!(html.contains("<link rel=\"icon\" type=\"image/png\" href=\"assets/logo.png\">"));
+
+    // 2) 同时存在 logo.svg：优先使用矢量图。
+    fs::write(
+        source.join("assets/logo.svg"),
+        "<svg xmlns=\"http://www.w3.org/2000/svg\"/>",
+    )
+    .expect("写入 svg");
+    build(&temp.path().join("out-both"));
+    let html = read(&temp.path().join("out-both/index.html"));
+    assert!(html.contains("<link rel=\"icon\" type=\"image/svg+xml\" href=\"assets/logo.svg\">"));
+    assert!(!html.contains("logo.png\""));
+
+    // 3) 图标本身仍作为静态资源被复制到输出目录。
+    assert!(temp.path().join("out-both/assets/logo.svg").is_file());
+
+    // 4) 删掉 logo.* 后不再输出任何 icon 声明。
+    fs::remove_file(source.join("assets/logo.svg")).expect("删除 svg");
+    fs::remove_file(source.join("assets/logo.png")).expect("删除 png");
+    build(&temp.path().join("out-none"));
+    let html = read(&temp.path().join("out-none/index.html"));
+    assert!(!html.contains("rel=\"icon\""));
 }
 
 #[test]
